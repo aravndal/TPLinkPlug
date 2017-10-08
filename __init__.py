@@ -182,7 +182,7 @@ def TPLinkplugs_background_task(api):
         resp = json.loads(resp)
         emeter = resp["emeter"]["get_realtime"]
         sysinfo = resp["system"]["get_sysinfo"]
-        cbpi.notify("TPLinkPlug %s" % sysinfo["alias"], "Voltage %s, Current %s, Power %s, Total %s" % (emeter["voltage"],emeter["current"], emeter["power"],emeter["total"]), timeout = 10000)
+        cbpi.notify("TPLinkPlug %s" % sysinfo["alias"], "Voltage %.1fV, Current %.2fA Power %.2fW, Total %.2fW" % (emeter["voltage"], emeter["current"], emeter["power"],emeter["total"]), timeout = 90000)
 
     for key in cbpi.cache.get("actors"):
         value = cbpi.cache.get("actors").get(key)
