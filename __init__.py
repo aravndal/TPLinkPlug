@@ -126,12 +126,6 @@ class TPLinkPlug(ActorBase):
     def set_power(self, power):
         pass
 
-    def token(self):
-        token = cbpi.get_config_parameter("tplink_token", None)
-        if token is None:
-            token = StartTPLink(username,password)
-        return token
-
     def url(self):
         no = int(self.plug_name)-1
         url = TPplugs[no]["appServerUrl"]
@@ -173,7 +167,7 @@ def TPLinkplugs_background_task(api):
     for key in cbpi.cache.get("actors"):
         value = cbpi.cache.get("actors").get(key)
         try:
-            if (value.state == 1 and value.instance.token() > 0):
+            if (value.state == 1 and value.type == "TPLinkPlug"):
                 if value.instance.showstats():
                     url = value.instance.url()
                     device = value.instance.device()
