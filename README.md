@@ -5,6 +5,10 @@ The TPLinkPlugin allows CraftBeerPi to use the TPLink Wi-Fi Smart Plugs, see htt
 
 This plugin is based on the documentation on IT NERD SPACE, see http://itnerd.space/2017/01/22/how-to-control-your-tp-link-hs100-smartplug-from-internet/
 
+Screenshot
+![tplinkplug_setup](https://user-images.githubusercontent.com/13233951/31318915-48c6dba2-ac5a-11e7-8e3a-795d243e7b86.png)
+![tplinkplug_notify](https://user-images.githubusercontent.com/13233951/31318916-4b1d0ae8-ac5a-11e7-8d44-91d7521d1ff4.png)
+
 ## Use
 1. Register your Wi-Fi plug in the Kasa App, see information on TP-Link homepage
 2. Download this Plugin from CraftBeerPi 3 Add-On page
