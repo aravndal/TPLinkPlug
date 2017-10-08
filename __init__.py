@@ -7,17 +7,13 @@ from flask import request
 
 def httpTPlink(url, data_load):
     try:
-        cbpi.app.logger.info("Open URL TPLink %s / %s" % (url,data_load))
+        # cbpi.app.logger.info("Open URL TPLink")
         data = json.loads(data_load)
         req = urllib2.Request("%s" % (url))
         req.add_header('Content-Type', 'application/json')
-        cbpi.app.logger.info("STEG 1")
         resp = urllib2.urlopen(req, json.dumps(data))
-        cbpi.app.logger.info("STEG 2")
         json_object = resp.read()
-        cbpi.app.logger.info("STEG 3")
         response_dict = json.loads(json_object)
-        cbpi.app.logger.info("STEG 4")
         return response_dict
     except Exception as e:
         cbpi.app.logger.error("FAILED when contacting TP Link site: %s" % (url))
@@ -37,21 +33,15 @@ def init_TPLink(MyUUID4):
     cbpi.app.logger.info("Get token for TPLink")
     url = "https://wap.tplinkcloud.com"
     data_input = '{ "method": "login", "params": { "appType": "Kasa_Android", "cloudUserName": "%s", "cloudPassword": "%s", "terminalUUID": "%s" } }'
-    cbpi.app.logger.info("STEG A")
     data_input = data_input % (username, password, MyUUID4)
-    cbpi.app.logger.info("url and data: %s / %s" % (url,data_input))
     ## Sending http command ""
     my_response = httpTPlink(url, data_input)
-    cbpi.app.logger.info("STEG B: %s" % my_response)
     if my_response == False:
-        cbpi.app.logger.info("STEG C")
         return False
-    cbpi.app.logger.info("STEG D")
     token = my_response["result"]["token"]
     return token
 
 def StartTPLink():
-    cbpi.app.logger.info("Start TPLink")
     try:
         cbpi.add_config_parameter("tplink_uuid4", "", "text", "TPLink UUID4")
         cbpi.add_config_parameter("tplink_token", "", "text", "TPLink Token")
@@ -115,7 +105,6 @@ def init(cbpi):
 
 @cbpi.actor
 class TPLinkPlug(ActorBase):
-    cbpi.app.logger.info("Starting TP Plug")
     plug_name = Property.Select("Plug", [1,2,3,4,5], description="TPLink Plug")
     plug_time = Property.Number("Publish stats every minute", configurable = True, unit="s", default_value=0, description="Time in minutes to publish voltage stats, 0 is off")
     c_off = 0
@@ -144,10 +133,8 @@ class TPLinkPlug(ActorBase):
         return token
 
     def url(self):
-        cbpi.app.logger.info("URL")
         no = int(self.plug_name)-1
         url = TPplugs[no]["appServerUrl"]
-        cbpi.app.logger.info("URL")
         return url
 
     def device(self):
@@ -170,9 +157,8 @@ class TPLinkPlug(ActorBase):
 
 @cbpi.backgroundtask(key="read_tplink_plug", interval=60)
 def TPLinkplugs_background_task(api):
-    cbpi.app.logger.info("TPLink Background Task")
 
-    def showstats(url,device):
+    def showstats(name, url, device):
         url = url +"?token=%s" % tplink_token
         data_input = '{"method":"passthrough", "params": {"deviceId": "%s", "requestData": "{\\"system\\":{\\"get_sysinfo\\":null},\\"emeter\\":{\\"get_realtime\\":null}}" }}'
         data_input = data_input % (device)
@@ -182,16 +168,16 @@ def TPLinkplugs_background_task(api):
         resp = json.loads(resp)
         emeter = resp["emeter"]["get_realtime"]
         sysinfo = resp["system"]["get_sysinfo"]
-        cbpi.notify("TPLinkPlug %s" % sysinfo["alias"], "Voltage %.1fV, Current %.2fA Power %.2fW, Total %.2fW" % (emeter["voltage"], emeter["current"], emeter["power"],emeter["total"]), timeout = 90000)
+        cbpi.notify("TPLinkPlug %s (%s)" % (name, sysinfo["alias"]), "Voltage %.1fV, Current %.2fA Power %.2fW, Total %.2fkWh" % (emeter["voltage"], emeter["current"], emeter["power"],emeter["total"]), timeout = 90000)
 
     for key in cbpi.cache.get("actors"):
         value = cbpi.cache.get("actors").get(key)
         try:
             if (value.state == 1 and value.instance.token() > 0):
-                cbpi.app.logger.info("Instance %s" % value.instance.token())
                 if value.instance.showstats():
                     url = value.instance.url()
                     device = value.instance.device()
-                    showstats(url, device)
+                    name = value.name
+                    showstats(name, url, device)
         except:
             pass
