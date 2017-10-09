@@ -214,7 +214,7 @@ class TPLinkPlug(ActorBase):
     def ip(self):
         return self.plug_ip
 
-@cbpi.backgroundtask(key="read_tplink_plug", interval=20)
+@cbpi.backgroundtask(key="read_tplink_plug", interval=60)
 def TPLinkplugs_background_task(api):
 
     def ddhhmmss(seconds):
