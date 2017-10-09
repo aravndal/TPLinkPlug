@@ -5,6 +5,39 @@ import urllib2, json
 import uuid
 from flask import request
 
+# Encryption and Decryption of TP-Link Smart Home Protocol
+# XOR Autokey Cipher with starting key = 171
+def encrypt(string):
+    key = 171
+    result = "\0\0\0\0"
+    for i in string:
+        a = key ^ ord(i)
+        key = a
+        result += chr(a)
+    return result
+
+def decrypt(string):
+    key = 171
+    result = ""
+    for i in string:
+        a = key ^ ord(i)
+        key = ord(i)
+        result += chr(a)
+    return result
+
+def getjson(ip,json_string):
+    cbpi.app.logger.info("Local TP Link")
+    port = 9999
+    try:
+        sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock_tcp.connect((ip, port))
+        sock_tcp.send(encrypt(json_string))
+        data = sock_tcp.recv(2048)
+        sock_tcp.close()
+        return decrypt(data[4:])
+    except socket.error:
+        cbpi.app.logger.info("Could not connect to host %s:%s" % (ip, port))
+
 def httpTPlink(url, data_load):
     try:
         # cbpi.app.logger.info("Open URL TPLink")
@@ -107,6 +140,7 @@ def init(cbpi):
 class TPLinkPlug(ActorBase):
     plug_name = Property.Select("Plug", [1,2,3,4,5], description="TPLink Plug")
     plug_time = Property.Number("Publish stats every minute", configurable = True, unit="s", default_value=0, description="Time in minutes to publish voltage stats, 0 is off")
+    plug_ip = Property.Text("TP-Link Plug IP", configurable = True, default_value="192.168.0.10", description="Local IP address of TP-Link plug")
     c_off = 0
     d_on = 1
     cnt_timer = 0
@@ -143,14 +177,27 @@ class TPLinkPlug(ActorBase):
         plug_time = int(self.plug_time)
         if plug_time == 0:
             return False
-        self.cnt_timer = self.cnt_timer + 1
+        self.cnt_timer += 1
         if (self.cnt_timer >= plug_time):
             self.cnt_timer = 0
             return True
         return False
 
+    def ip(self):
+        return self.plug_ip
+
 @cbpi.backgroundtask(key="read_tplink_plug", interval=60)
 def TPLinkplugs_background_task(api):
+
+    def ddhhmmss(seconds):
+        # Convert seconds to a time string "[[[DD:]HH:]MM:]SS".
+        dhms = ''
+        for scale in 86400, 3600, 60:
+            result, seconds = divmod(seconds, scale)
+            if dhms != '' or result > 0:
+                dhms += '{0:02d}:'.format(result)
+        dhms += '{0:02d}'.format(seconds)
+        return dhms
 
     def showstats(name, url, device):
         url = url +"?token=%s" % tplink_token
@@ -160,9 +207,20 @@ def TPLinkplugs_background_task(api):
         resp = resp["result"]["responseData"]
         resp = resp.replace('\"', '"')
         resp = json.loads(resp)
-        emeter = resp["emeter"]["get_realtime"]
-        sysinfo = resp["system"]["get_sysinfo"]
-        cbpi.notify("TPLinkPlug %s (%s)" % (name, sysinfo["alias"]), "Voltage %.1fV, Current %.2fA Power %.2fW, Total %.2fkWh" % (emeter["voltage"], emeter["current"], emeter["power"],emeter["total"]), timeout = 90000)
+        output = ""
+        if "system" in resp:
+            sysinfo = resp["system"]["get_sysinfo"]
+            relay_state = sysinfo["relay_state"]
+            output += "Plug is "
+            output += "On" if relay_state == 1 else "Off"
+            timeon = sysinfo["on_time"]
+            output += " for %s" % ddhhmmss(timeon)
+            output += ". "
+        if "emeter" in resp:
+            emeter = resp["emeter"]["get_realtime"]
+            output += "Voltage %.1fV, Current %.1fA Power %.0fW, Total %.2fkWh" % (emeter["voltage"], emeter["current"], emeter["power"],emeter["total"])
+        if len(output) > 5:
+            cbpi.notify("TPLinkPlug %s (%s)" % (name, sysinfo["alias"]), output, timeout = 90000)
 
     for key in cbpi.cache.get("actors"):
         value = cbpi.cache.get("actors").get(key)
