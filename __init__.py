@@ -3,6 +3,8 @@ from modules.core.hardware import ActorBase
 from modules.core.props import Property
 import urllib2, json
 import uuid
+import socket
+import argparse
 from flask import request
 
 # Encryption and Decryption of TP-Link Smart Home Protocol
@@ -25,20 +27,22 @@ def decrypt(string):
         result += chr(a)
     return result
 
-def getjson(ip,json_string):
-    cbpi.app.logger.info("Local TP Link")
+def getjson(ip, data_load):
+    cbpi.app.logger.info("Local TP Link %s / %s" % (ip, data_load))
     port = 9999
     try:
         sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock_tcp.connect((ip, port))
-        sock_tcp.send(encrypt(json_string))
+        sock_tcp.send(encrypt(data_load))
         data = sock_tcp.recv(2048)
         sock_tcp.close()
         return decrypt(data[4:])
     except socket.error:
         cbpi.app.logger.info("Could not connect to host %s:%s" % (ip, port))
+        return False
 
 def httpTPlink(url, data_load):
+    cbpi.app.logger.info("Cloud TP Link %s / %s" % (url, data_load))
     try:
         # cbpi.app.logger.info("Open URL TPLink")
         data = json.loads(data_load)
@@ -53,14 +57,23 @@ def httpTPlink(url, data_load):
         cbpi.notify("TPLink http Error", "Check username and password.", type="danger", timeout=10000)
         return False
 
-def send(command, plug=1):
-    plug = plug-1
-    url = TPplugs[plug]["appServerUrl"]
-    url = url +"?token=%s" % tplink_token
-    device = TPplugs[plug]["deviceId"]
-    data_input = '{"method":"passthrough", "params": {"deviceId": "%s", "requestData": "{\\"system\\":{\\"set_relay_state\\":{\\"state\\":%s}}}" }}'
-    data_input = data_input % (device, command)
-    resp = httpTPlink(url, data_input)
+def receive(data_load, ip="", url=""):
+    pass
+    
+def send(command, plug="", ip=""):
+    if ip == "":
+        cbpi.app.logger.info("Send Cloud TP Link %s" % command)
+        plug = plug-1
+        url = TPplugs[plug]["appServerUrl"]
+        url = url +"?token=%s" % tplink_token
+        device = TPplugs[plug]["deviceId"]
+        data_input = '{"method":"passthrough", "params": {"deviceId": "%s", "requestData": "{\\"system\\":{\\"set_relay_state\\":{\\"state\\":%s}}}" }}'
+        data_input = data_input % (device, command)
+        resp = httpTPlink(url, data_input)
+    else:
+        cbpi.app.logger.info("Send Local TP Link %s" % command)
+        data_input = '{"system":{"set_relay_state":{"state":%s}}}' % command
+        resp = getjson(ip, data_input)
 
 def init_TPLink(MyUUID4):
     cbpi.app.logger.info("Get token for TPLink")
@@ -140,20 +153,26 @@ def init(cbpi):
 class TPLinkPlug(ActorBase):
     plug_name = Property.Select("Plug", [1,2,3,4,5], description="TPLink Plug")
     plug_time = Property.Number("Publish stats every minute", configurable = True, unit="s", default_value=0, description="Time in minutes to publish voltage stats, 0 is off")
-    plug_ip = Property.Text("TP-Link Plug IP", configurable = True, default_value="192.168.0.10", description="Local IP address of TP-Link plug")
+    plug_ip = Property.Text("TP-Link Plug Local IP", configurable = True, default_value="192.168.0.10", description="Local IP address is used instead of Cloud service, leave blank to use cloud service.")
     c_off = 0
     d_on = 1
     cnt_timer = 0
 
     def on(self, power=100):
         try:
-            send(self.d_on, int(self.plug_name))
+            if self.plug_ip == "":
+                send(command = self.d_on, plug = int(self.plug_name))
+            else:
+                send(command = self.d_on, ip = self.plug_ip)
         except:
             cbpi.notify("TPLinkPlug Error", "Device not correctly setup, go to Hardware settings and correct.", type="danger", timeout=10000) 
 
     def off(self):
         try:
-            send(self.c_off, int(self.plug_name))
+            if self.plug_ip == "":
+                send(command = self.c_off, plug = int(self.plug_name))
+            else:
+                send(command = self.c_off, ip = self.plug_ip)
         except:
             cbpi.notify("TPLinkPlug Error", "Device not correctly setup, go to Hardware settings and correct.", type="danger", timeout=10000) 
 
@@ -186,7 +205,7 @@ class TPLinkPlug(ActorBase):
     def ip(self):
         return self.plug_ip
 
-@cbpi.backgroundtask(key="read_tplink_plug", interval=60)
+@cbpi.backgroundtask(key="read_tplink_plug", interval=20)
 def TPLinkplugs_background_task(api):
 
     def ddhhmmss(seconds):
@@ -199,14 +218,20 @@ def TPLinkplugs_background_task(api):
         dhms += '{0:02d}'.format(seconds)
         return dhms
 
-    def showstats(name, url, device):
-        url = url +"?token=%s" % tplink_token
-        data_input = '{"method":"passthrough", "params": {"deviceId": "%s", "requestData": "{\\"system\\":{\\"get_sysinfo\\":null},\\"emeter\\":{\\"get_realtime\\":null}}" }}'
-        data_input = data_input % (device)
-        resp = httpTPlink(url, data_input)
-        resp = resp["result"]["responseData"]
-        resp = resp.replace('\"', '"')
+    def NotifyStats(name, ip, url, device):
+        cbpi.app.logger.info("TPLink Background")
+        if ip == "":
+            url = url +"?token=%s" % tplink_token
+            data_input = '{"method":"passthrough", "params": {"deviceId": "%s", "requestData": "{\\"system\\":{\\"get_sysinfo\\":null},\\"emeter\\":{\\"get_realtime\\":null}}" }}'
+            data_input = data_input % (device)
+            resp = httpTPlink(url, data_input)
+            resp = resp["result"]["responseData"]
+            resp = resp.replace('\"', '"')
+        else:
+            resp = getjson(ip, '{"system":{"get_sysinfo":null},"emeter":{"get_realtime":{}},"time":{"get_time":null}}')
+        cbpi.app.logger.info("JSON Response %s" % resp)
         resp = json.loads(resp)
+        cbpi.app.logger.info("JSON Response %s" % resp)
         output = ""
         if "system" in resp:
             sysinfo = resp["system"]["get_sysinfo"]
@@ -227,9 +252,11 @@ def TPLinkplugs_background_task(api):
         try:
             if (value.state == 1 and value.type == "TPLinkPlug"):
                 if value.instance.showstats():
+                    ip = value.instance.ip()
+                    cbpi.app.logger.info("TPLink IP: %s" % ip)
                     url = value.instance.url()
                     device = value.instance.device()
                     name = value.name
-                    showstats(name, url, device)
+                    NotifyStats(name, ip, url, device)
         except:
             pass
