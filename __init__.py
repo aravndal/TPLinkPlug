@@ -136,7 +136,8 @@ def getUser():
             cbpi.add_config_parameter("tplink_username", "", "text", "TPLink Username")
             cbpi.add_config_parameter("tplink_password", "", "text", "TPLink Password")
         except:
-            cbpi.notify("TPLink Error", "Unable to read TP Link config, update CraftBeerPi Parameter settings and reboot.", type="danger", timeout=10000)
+            pass
+            # cbpi.notify("TPLink Error", "Unable to read TP Link config, update CraftBeerPi Parameter settings and reboot.", type="danger", timeout=10000)
 
 def getPlugs():
     cbpi.app.logger.info("Get TP Plugs IDs")
@@ -189,13 +190,19 @@ class TPLinkPlug(ActorBase):
         pass
 
     def url(self):
-        no = int(self.plug_name)-1
-        url = TPplugs[no]["appServerUrl"]
+        try:
+            no = int(self.plug_name)-1
+            url = TPplugs[no]["appServerUrl"]
+        except:
+            url = ""
         return url
 
     def device(self):
-        no = int(self.plug_name)-1
-        device = TPplugs[no]["deviceId"]
+        try:
+            no = int(self.plug_name)-1
+            device = TPplugs[no]["deviceId"]
+        except:
+            device = ""
         return device
 
     def time(self):
@@ -216,6 +223,7 @@ class TPLinkPlug(ActorBase):
 
 @cbpi.backgroundtask(key="read_tplink_plug", interval=60)
 def TPLinkplugs_background_task(api):
+    log("TPLink Background")
 
     def ddhhmmss(seconds):
         # Convert seconds to a time string "[[[DD:]HH:]MM:]SS".
@@ -228,7 +236,7 @@ def TPLinkplugs_background_task(api):
         return dhms
 
     def NotifyStats(name, ip, url, device):
-        log("TPLink Background")
+        log("TPLink Notify")
         if ip == "":
             data_load = '{"method":"passthrough", "params": {"deviceId": "%s", "requestData": "{\\"system\\":{\\"get_sysinfo\\":null},\\"emeter\\":{\\"get_realtime\\":null}}"}}' % device
         else:
