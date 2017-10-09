@@ -7,8 +7,15 @@ import socket
 import argparse
 from flask import request
 
+DEBUG = False
+
+def log(s):
+    if DEBUG:
+        cbpi.app.logger.info(s)
+
 # Encryption and Decryption of TP-Link Smart Home Protocol
 # XOR Autokey Cipher with starting key = 171
+
 def encrypt(string):
     key = 171
     result = "\0\0\0\0"
@@ -28,7 +35,7 @@ def decrypt(string):
     return result
 
 def getjson(ip, data_load):
-    cbpi.app.logger.info("Local TP Link %s / %s" % (ip, data_load))
+    log("Local TP Link %s / %s" % (ip, data_load))
     port = 9999
     try:
         sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -38,13 +45,13 @@ def getjson(ip, data_load):
         sock_tcp.close()
         return decrypt(data[4:])
     except socket.error:
-        cbpi.app.logger.info("Could not connect to host %s:%s" % (ip, port))
+        log("Could not connect to host %s:%s" % (ip, port))
+        cbpi.notify("TPLink Local IP Error", "Check local ip address or remove to use Cloud.", type="danger", timeout=10000)
         return False
 
 def httpTPlink(url, data_load):
-    cbpi.app.logger.info("Cloud TP Link %s / %s" % (url, data_load))
+    log("Cloud TP Link %s / %s" % (url, data_load))
     try:
-        # cbpi.app.logger.info("Open URL TPLink")
         data = json.loads(data_load)
         req = urllib2.Request("%s" % (url))
         req.add_header('Content-Type', 'application/json')
@@ -58,11 +65,19 @@ def httpTPlink(url, data_load):
         return False
 
 def receive(data_load, ip="", url=""):
-    pass
-    
+    log("Receiver %s / %s /%s" % (data_load, ip, url))
+    if ip == "":
+        url += "?token=%s" % tplink_token
+        resp = httpTPlink(url, data_load)
+        resp = resp["result"]["responseData"]
+        resp = resp.replace('\"', '"')
+    else:
+        resp = getjson(ip, '{"system":{"get_sysinfo":null},"emeter":{"get_realtime":{}},"time":{"get_time":null}}')
+    return resp
+
 def send(command, plug="", ip=""):
     if ip == "":
-        cbpi.app.logger.info("Send Cloud TP Link %s" % command)
+        log("Send Cloud TP Link %s" % command)
         plug = plug-1
         url = TPplugs[plug]["appServerUrl"]
         url = url +"?token=%s" % tplink_token
@@ -71,12 +86,12 @@ def send(command, plug="", ip=""):
         data_input = data_input % (device, command)
         resp = httpTPlink(url, data_input)
     else:
-        cbpi.app.logger.info("Send Local TP Link %s" % command)
+        log("Send Local TP Link %s" % command)
         data_input = '{"system":{"set_relay_state":{"state":%s}}}' % command
         resp = getjson(ip, data_input)
 
 def init_TPLink(MyUUID4):
-    cbpi.app.logger.info("Get token for TPLink")
+    log("Get token for TPLink")
     url = "https://wap.tplinkcloud.com"
     data_input = '{ "method": "login", "params": { "appType": "Kasa_Android", "cloudUserName": "%s", "cloudPassword": "%s", "terminalUUID": "%s" } }'
     data_input = data_input % (username, password, MyUUID4)
@@ -105,7 +120,7 @@ def getToken():
     cbpi.app.logger.info("Get Token")
     global tplink_token
     tplink_token = cbpi.get_config_parameter("tplink_token", None)
-    cbpi.app.logger.info("Token %s" % tplink_token)
+    log("Token %s" % tplink_token)
     if (tplink_token is None or tplink_token == ""):
        if username == None:
            return False
@@ -160,19 +175,13 @@ class TPLinkPlug(ActorBase):
 
     def on(self, power=100):
         try:
-            if self.plug_ip == "":
-                send(command = self.d_on, plug = int(self.plug_name))
-            else:
-                send(command = self.d_on, ip = self.plug_ip)
+            send(command = self.d_on, plug = int(self.plug_name), ip = self.plug_ip)
         except:
             cbpi.notify("TPLinkPlug Error", "Device not correctly setup, go to Hardware settings and correct.", type="danger", timeout=10000) 
 
     def off(self):
         try:
-            if self.plug_ip == "":
-                send(command = self.c_off, plug = int(self.plug_name))
-            else:
-                send(command = self.c_off, ip = self.plug_ip)
+            send(command = self.c_off, plug = int(self.plug_name), ip=self.plug_ip)
         except:
             cbpi.notify("TPLinkPlug Error", "Device not correctly setup, go to Hardware settings and correct.", type="danger", timeout=10000) 
 
@@ -219,19 +228,13 @@ def TPLinkplugs_background_task(api):
         return dhms
 
     def NotifyStats(name, ip, url, device):
-        cbpi.app.logger.info("TPLink Background")
+        log("TPLink Background")
         if ip == "":
-            url = url +"?token=%s" % tplink_token
-            data_input = '{"method":"passthrough", "params": {"deviceId": "%s", "requestData": "{\\"system\\":{\\"get_sysinfo\\":null},\\"emeter\\":{\\"get_realtime\\":null}}" }}'
-            data_input = data_input % (device)
-            resp = httpTPlink(url, data_input)
-            resp = resp["result"]["responseData"]
-            resp = resp.replace('\"', '"')
+            data_load = '{"method":"passthrough", "params": {"deviceId": "%s", "requestData": "{\\"system\\":{\\"get_sysinfo\\":null},\\"emeter\\":{\\"get_realtime\\":null}}"}}' % device
         else:
-            resp = getjson(ip, '{"system":{"get_sysinfo":null},"emeter":{"get_realtime":{}},"time":{"get_time":null}}')
-        cbpi.app.logger.info("JSON Response %s" % resp)
+            data_load = '{"system":{"get_sysinfo":null},"emeter":{"get_realtime":{}},"time":{"get_time":null}}'
+        resp = receive(data_load, ip, url)
         resp = json.loads(resp)
-        cbpi.app.logger.info("JSON Response %s" % resp)
         output = ""
         if "system" in resp:
             sysinfo = resp["system"]["get_sysinfo"]
@@ -253,7 +256,6 @@ def TPLinkplugs_background_task(api):
             if (value.state == 1 and value.type == "TPLinkPlug"):
                 if value.instance.showstats():
                     ip = value.instance.ip()
-                    cbpi.app.logger.info("TPLink IP: %s" % ip)
                     url = value.instance.url()
                     device = value.instance.device()
                     name = value.name
