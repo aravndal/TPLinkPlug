@@ -100,12 +100,9 @@ def init_TPLink(MyUUID4):
     if my_response == False:
         return False
     # log("Response %s" % my_response)
-    log("A")
     if (my_response["error_code"] >= 0):
-        log("B")
         token = my_response["result"]["token"]
     else:
-        log("C")
         token = ""
         err = my_response["msg"]
         cbpi.notify("TPLinkPlug Error", err, type="danger", timeout=10000)
