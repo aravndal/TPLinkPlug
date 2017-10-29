@@ -7,7 +7,7 @@ import socket
 import argparse
 from flask import request
 
-DEBUG = False
+DEBUG = True
 
 def log(s):
     if DEBUG:
@@ -99,7 +99,12 @@ def init_TPLink(MyUUID4):
     my_response = httpTPlink(url, data_input)
     if my_response == False:
         return False
-    token = my_response["result"]["token"]
+    # log("Response %s" % my_response)
+    if (my_response["error_code"] >= 0):
+        token = my_response["result"]["token"]
+    else:
+        err = my_response["msg"]
+        cbpi.notify("TPLinkPlug Error", err, type="danger", timeout=10000)
     return token
 
 def StartTPLink():
@@ -120,7 +125,6 @@ def getToken():
     cbpi.app.logger.info("Get Token")
     global tplink_token
     tplink_token = cbpi.get_config_parameter("tplink_token", None)
-    log("Token %s" % tplink_token)
     if (tplink_token is None or tplink_token == ""):
        if username == None:
            return False
@@ -159,7 +163,7 @@ def init(cbpi):
        return
     getToken()
     global TPplugs
-    if tplink_token != None:
+    if (tplink_token != None and tplink_token != ""):
         TPplugs = getPlugs()
     else:
         TPplugs = []
@@ -169,7 +173,7 @@ def init(cbpi):
 class TPLinkPlug(ActorBase):
     plug_name = Property.Select("Plug", [1,2,3,4,5], description="TPLink Plug")
     plug_time = Property.Number("Publish stats every minute", configurable = True, unit="s", default_value=0, description="Time in minutes to publish voltage stats, 0 is off")
-    plug_ip = Property.Text("TP-Link Plug Local IP", configurable = True, default_value="192.168.0.10", description="Local IP address is used instead of Cloud service, leave blank to use cloud service.")
+    plug_ip = Property.Text("TP-Link Plug Local IP", configurable = True, default_value="", description="Local IP address is used instead of Cloud service, leave blank to use cloud service.")
     c_off = 0
     d_on = 1
     cnt_timer = 0
