@@ -152,7 +152,11 @@ def getPlugs():
     resp = httpTPlink(url, data_input)
     if resp == False:
         return []
-    deviceList = resp["result"]["deviceList"]
+    try:
+        deviceList = resp["result"]["deviceList"]
+    except:
+        cbpi.notify("TPLink Error", "Unable to read device list from cloud, check token.", type="danger",  timeout=None)
+        deviceList = []
     return deviceList
 
 @cbpi.initalizer(order=10)
