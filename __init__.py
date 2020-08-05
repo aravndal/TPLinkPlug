@@ -1,7 +1,7 @@
 from modules import cbpi
 from modules.core.hardware import ActorBase
 from modules.core.props import Property
-import urllib2, json
+import urllib.request, urllib.error, urllib.parse, json
 import uuid
 import socket
 import argparse
@@ -53,9 +53,9 @@ def httpTPlink(url, data_load):
     log("Cloud TP Link %s / %s" % (url, data_load))
     try:
         data = json.loads(data_load)
-        req = urllib2.Request("%s" % (url))
+        req = urllib.request.Request("%s" % (url))
         req.add_header('Content-Type', 'application/json')
-        resp = urllib2.urlopen(req, json.dumps(data))
+        resp = urllib.request.urlopen(req, json.dumps(data))
         json_object = resp.read()
         response_dict = json.loads(json_object)
         return response_dict
